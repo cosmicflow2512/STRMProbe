@@ -1,12 +1,9 @@
-# Example Sonarr (LinuxServer.io) service wired up for STRMProbe.
+# Example Sonarr (LinuxServer.io) with STRMProbe.
 #
-# Three mounts make the wrapper work:
-#   1. the init script  -> /config/custom-cont-init.d/99-strmprobe
-#   2. the wrapper       -> /config/strmprobe/ffprobe-wrapper.sh
-#   3. (optional) a pre-seeded ffprobe-full -> /config/bin/ffprobe-full
-#      If omitted, the init script auto-downloads it on first start (needs network).
+# Recommended: activate STRMProbe via the Docker mod — just the DOCKER_MODS env
+# var below. No volume mounts, symlinks or pre-seeding needed.
 #
-# Adjust the host paths to where you cloned this repo and your media library.
+# Pin a release tag (…/strmprobe-mod:vX.Y.Z) in production instead of :latest.
 services:
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -15,17 +12,22 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
-      # Optional: enable the wrapper's debug log at /config/logs/ffprobe-wrapper.log
+      - DOCKER_MODS=ghcr.io/cosmicflow2512/strmprobe-mod:latest
+      # Optional: enable the wrapper debug log at /config/logs/ffprobe-wrapper.log
       - STRMPROBE_LOG=1
     volumes:
       - /srv/sonarr:/config
-      # --- STRMProbe artifacts ---
-      - ./src/strmprobe-init.sh:/config/custom-cont-init.d/99-strmprobe:ro
-      - ./src/ffprobe-wrapper.sh:/config/strmprobe/ffprobe-wrapper.sh:ro
-      # Optional pre-seeded binary (otherwise auto-downloaded on first start):
-      # - ./bin/ffprobe-full:/config/bin/ffprobe-full:ro
-      # --- media ---
       - /path/to/library/tv:/tv
     ports:
       - "8989:8989"
     restart: unless-stopped
+
+    # --- Manual (non-mod) alternative: drop the DOCKER_MODS line above and mount
+    #     the two scripts into /config instead (see README "Manual installation"):
+    # volumes:
+    #   - /srv/sonarr:/config
+    #   - ./src/strmprobe-init.sh:/config/custom-cont-init.d/99-strmprobe:ro
+    #   - ./src/ffprobe-wrapper.sh:/config/strmprobe/ffprobe-wrapper.sh:ro
+    #   # Optional pre-seeded binary (otherwise auto-downloaded on first start):
+    #   # - ./bin/ffprobe-full:/config/bin/ffprobe-full:ro
+    #   - /path/to/library/tv:/tv

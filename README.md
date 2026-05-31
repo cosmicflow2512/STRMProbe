@@ -59,10 +59,54 @@ ffprobe <args> ──► ffprobe-wrapper.sh ──┬─ .strm? ─► ffprobe-f
 | `scripts/health-check.sh` | check a running container is correctly patched |
 | `tests/` | self-contained bash test suite (no real binaries needed) |
 | `examples/` | docker-compose examples + Unraid notes |
+| `mod/` | LinuxServer.io Docker mod (Dockerfile + staging/build scripts) |
+| `.github/workflows/build-mod.yml` | CI: build + push the multi-arch mod image to GHCR |
 
-## Installation
+## Installation (Docker mod — recommended)
 
-You need three things reachable inside the container's `/config`:
+Activate STRMProbe in any LSIO container with a single environment variable — no
+volume mounts, symlinks or pre-seeding:
+
+```yaml
+services:
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    environment:
+      - PUID=99
+      - PGID=100
+      - TZ=Europe/Berlin
+      - DOCKER_MODS=ghcr.io/cosmicflow2512/strmprobe-mod:latest
+      - STRMPROBE_LOG=1            # optional debug log
+    volumes:
+      - /path/to/sonarr/config:/config
+      - /path/to/tv:/tv
+    ports:
+      - 8989:8989
+```
+
+On first start LSIO downloads the mod and overlays the init script
+(`/custom-cont-init.d/99-strmprobe`) and the wrapper
+(`/usr/local/share/strmprobe/ffprobe-wrapper.sh`) onto the container. The init
+script then runs as root: backs up the original `ffprobe` to `ffprobe.real`,
+installs the wrapper, and downloads `ffprobe-full`. Watch it with
+`docker logs <app> | grep STRMProbe`.
+
+> **Pin a version in production.** `:latest` always tracks `main`; pin a release
+> tag (`:vX.Y.Z`) so mod updates don't roll out to you unexpectedly.
+
+**Combining mods** — separate multiple mods with `|`:
+
+```yaml
+- DOCKER_MODS=ghcr.io/cosmicflow2512/strmprobe-mod:latest|ghcr.io/thecaptain989/sonarr-striptracks:latest
+```
+
+STRMProbe's init script is numbered `99-` so it runs **last** — after any mod
+that might also touch `/app/*/bin/`. (Mod load order is not otherwise guaranteed.)
+
+## Manual installation (non-mod fallback)
+
+For non-LSIO images, custom builds, or if you'd rather not use a mod, mount the
+two scripts into `/config` yourself:
 
 1. `src/strmprobe-init.sh` → `/config/custom-cont-init.d/99-strmprobe`
 2. `src/ffprobe-wrapper.sh` → `/config/strmprobe/ffprobe-wrapper.sh`
@@ -71,16 +115,27 @@ You need three things reachable inside the container's `/config`:
 
 See [`examples/docker-compose.sonarr.yml`](examples/docker-compose.sonarr.yml)
 and [`examples/unraid-notes.md`](examples/unraid-notes.md) for concrete wiring.
+After mounting/copying, restart the container.
 
-After mounting/copying, restart the container. The init script runs as root before
-the app, backs up the original `ffprobe` to `ffprobe.real`, installs the wrapper,
-and prints a summary you can see with `docker logs <app> | grep STRMProbe`.
+> **Installation order matters.** Keep the high number (`99-strmprobe`): LSIO runs
+> `custom-cont-init.d` scripts alphabetically, so it ensures STRMProbe runs after
+> other mods that might also modify `/app/*/bin/`.
 
-> **Installation order matters.** Name the init script with a high number
-> (`99-strmprobe`). LSIO runs `custom-cont-init.d` scripts in alphabetical order,
-> so a high number ensures STRMProbe runs **after** other mods that might also
-> modify `/app/*/bin/`. A low number risks your wrapper being overwritten by a
-> later-running mod.
+## Building the mod yourself
+
+For forks or local testing:
+
+```bash
+bash mod/build.sh                 # stages src/ -> mod/root/ and builds strmprobe-mod:test
+```
+
+`src/` stays the single source of truth — `mod/stage.sh` copies the wrapper and
+init script into `mod/root/` (git-ignored) at build time. CI builds and pushes
+**multi-arch (amd64 + arm64)** images to GHCR on every push to `main` touching
+`src/` or `mod/`, via
+[`.github/workflows/build-mod.yml`](.github/workflows/build-mod.yml). After the
+first push, set the GHCR package visibility to **public** so users can pull it
+without authenticating.
 
 ## Configuration (environment variables)
 
@@ -123,6 +178,12 @@ The init script detects the new version on the next boot and re-installs it. (If
 you mount the wrapper directly from the repo, just `git pull` and restart.)
 
 ## Rollback
+
+**Docker mod:** remove the `DOCKER_MODS` entry (or just the `strmprobe-mod` part)
+from the container's environment and recreate it — the next start uses the
+image's pristine `ffprobe` and STRMProbe is gone.
+
+**Manual install:** remove the init script and restore the original binary:
 
 ```bash
 # In the container: restore the original binary
