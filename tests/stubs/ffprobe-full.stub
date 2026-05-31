@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Test stub standing in for the network-capable static ffprobe ("ffprobe-full").
+# Prints a routing tag plus one line per argument, then exits with STUB_EXIT.
+printf 'WHICH=FULL\n'
+for a in "$@"; do
+    printf 'ARG=%s\n' "$a"
+done
+exit "${STUB_EXIT:-0}"

@@ -1,0 +1,24 @@
+# Example Radarr (LinuxServer.io) service wired up for STRMProbe.
+# Identical to the Sonarr example except the image, name, port and media mount.
+# See docker-compose.sonarr.yml for the full explanation of the three mounts.
+services:
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - STRMPROBE_LOG=1
+    volumes:
+      - /srv/radarr:/config
+      # --- STRMProbe artifacts ---
+      - ./src/strmprobe-init.sh:/config/custom-cont-init.d/99-strmprobe:ro
+      - ./src/ffprobe-wrapper.sh:/config/strmprobe/ffprobe-wrapper.sh:ro
+      # Optional pre-seeded binary (otherwise auto-downloaded on first start):
+      # - ./bin/ffprobe-full:/config/bin/ffprobe-full:ro
+      # --- media ---
+      - /path/to/library/movies:/movies
+    ports:
+      - "7878:7878"
+    restart: unless-stopped

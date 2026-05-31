@@ -1,0 +1,16 @@
+# Downloaded static ffprobe — fetched at deploy time, never committed (~80 MB, GPL build)
+/bin/ffprobe-full
+bin/ffprobe-full
+
+# Archives produced by scripts/fetch-ffprobe-full.sh
+*.tar.xz
+*.tar.gz
+
+# Test scratch
+/tests/.tmp/
+
+# Logs
+*.log
+
+# Local Claude Code settings (not part of the project)
+.claude/settings.local.json

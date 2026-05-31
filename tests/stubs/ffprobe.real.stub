@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Test stub standing in for the original ffprobe ("ffprobe.real").
+# Prints a routing tag plus one line per argument, then exits with STUB_EXIT.
+printf 'WHICH=REAL\n'
+for a in "$@"; do
+    printf 'ARG=%s\n' "$a"
+done
+exit "${STUB_EXIT:-0}"
