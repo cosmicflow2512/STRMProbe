@@ -24,7 +24,10 @@ log() { printf '[STRMProbe] %s\n' "$*"; }
 # --- 1. Locate and validate the wrapper source ---------------------------------
 WRAPPER_SRC="${STRMPROBE_WRAPPER_SRC:-/config/strmprobe/ffprobe-wrapper.sh}"
 if [ ! -f "$WRAPPER_SRC" ]; then
-    for candidate in /config/bin/ffprobe-wrapper.sh /config/custom-cont-init.d/ffprobe-wrapper.sh; do
+    for candidate in \
+        /config/bin/ffprobe-wrapper.sh \
+        /config/custom-cont-init.d/ffprobe-wrapper.sh \
+        /usr/local/share/strmprobe/ffprobe-wrapper.sh; do   # Docker-mod location
         if [ -f "$candidate" ]; then
             WRAPPER_SRC="$candidate"
             break

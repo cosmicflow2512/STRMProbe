@@ -1,9 +1,14 @@
 # Unraid setup notes
 
+> **Easiest path: the Docker mod.** Edit the container in the Unraid template, add
+> a Variable `DOCKER_MODS` = `ghcr.io/cosmicflow2512/strmprobe-mod:latest` (pin a
+> `:vX.Y.Z` tag in production), apply, and you're done — no appdata copying. The
+> steps below are the manual (non-mod) alternative.
+
 On Unraid the LinuxServer.io Sonarr/Radarr containers store their `/config` under
-`/srv/<app>/`. STRMProbe needs the
-init script, the wrapper, and (optionally) the static `ffprobe-full` reachable
-inside `/config`.
+`/srv/<app>/`. For the manual setup,
+STRMProbe needs the init script, the wrapper, and (optionally) the static
+`ffprobe-full` reachable inside `/config`.
 
 ## 1. Copy the artifacts into appdata
 

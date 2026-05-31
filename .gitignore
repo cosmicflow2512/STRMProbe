@@ -12,5 +12,8 @@ bin/ffprobe-full
 # Logs
 *.log
 
+# Docker mod files staged from src/ by mod/stage.sh
+/mod/root/
+
 # Local Claude Code settings (not part of the project)
 .claude/settings.local.json
