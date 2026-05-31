@@ -80,8 +80,11 @@ fetch_ffprobe_full() {
         rm -rf "$tmp"
         return 1
     fi
-    if ! tar -C "$tmp" -xJf "$tmp/ff.tar.xz" --wildcards '*/ffprobe' 2>/dev/null; then
-        log "WARN: could not extract ffprobe from archive"
+    # Extract the whole archive, then locate ffprobe with find. We intentionally
+    # avoid GNU tar's --wildcards: Alpine-based LSIO images ship BusyBox tar,
+    # which rejects that option. The tarball expands to ~150 MB in $tmp briefly.
+    if ! tar -C "$tmp" -xJf "$tmp/ff.tar.xz" 2>>"$tmp/tar.err"; then
+        log "WARN: could not extract archive: $(head -n1 "$tmp/tar.err" 2>/dev/null)"
         rm -rf "$tmp"
         return 1
     fi

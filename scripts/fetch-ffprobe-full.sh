@@ -4,15 +4,15 @@
 # /srv/<app>/bin/ffprobe-full on Unraid). The container init script
 # src/strmprobe-init.sh performs the same download automatically.
 #
-# Requires GNU tar (the --wildcards option). BSD/macOS tar does NOT support it;
-# on macOS run `brew install gnu-tar` and put its gnubin dir on PATH first, e.g.:
-#   PATH="/opt/homebrew/opt/gnu-tar/libexec/gnubin:$PATH" scripts/fetch-ffprobe-full.sh
+# Works with GNU tar, BSD/macOS tar and BusyBox tar: it extracts the whole
+# archive and then locates ffprobe with find, using no GNU-only tar options.
 #
 # Usage: scripts/fetch-ffprobe-full.sh [destination]
 #        (default destination: ./bin/ffprobe-full)
 #
 # Source: John Van Sickle static builds (https://johnvansickle.com/ffmpeg/).
 # Fallback source if needed: BtbN (https://github.com/BtbN/FFmpeg-Builds/releases).
+# Override the download URL with STRMPROBE_URL (e.g. a BtbN or mirror tarball).
 set -euo pipefail
 
 DEST="${1:-./bin/ffprobe-full}"
@@ -24,7 +24,7 @@ case "$ARCH" in
     *) echo "Unsupported architecture: $ARCH" >&2; exit 2 ;;
 esac
 
-URL="https://johnvansickle.com/ffmpeg/releases/${JVS}.tar.xz"
+URL="${STRMPROBE_URL:-https://johnvansickle.com/ffmpeg/releases/${JVS}.tar.xz}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -38,8 +38,8 @@ else
     exit 1
 fi
 
-echo "Extracting ffprobe ..."
-tar -C "$TMP" -xJf "$TMP/ff.tar.xz" --wildcards '*/ffprobe'
+echo "Extracting archive ..."
+tar -C "$TMP" -xJf "$TMP/ff.tar.xz"
 SRC="$(find "$TMP" -type f -name ffprobe | head -n1)"
 [ -n "$SRC" ] || { echo "ffprobe not found in archive" >&2; exit 3; }
 
