@@ -49,6 +49,19 @@ ffprobe <args> ──► ffprobe-wrapper.sh ──┬─ .strm? ─► ffprobe-f
                                          └─ else   ─► ffprobe.real  (original LSIO binary)
 ```
 
+### Wrapper-source lookup order
+
+The init script (`strmprobe-init.sh`) looks for the wrapper source in this order
+on every container start:
+
+1. `$STRMPROBE_WRAPPER_SRC` (if set as environment variable)
+2. `/config/strmprobe/ffprobe-wrapper.sh` (manual install convention)
+3. `/usr/local/share/strmprobe/ffprobe-wrapper.sh` (Docker mod convention)
+
+The first existing path wins. This is what lets the Docker mod work out of the
+box without requiring users to set `STRMPROBE_WRAPPER_SRC`, while still allowing
+manual installs to keep using `/config/strmprobe/`.
+
 ## Repository layout
 
 | Path | Purpose |
@@ -97,7 +110,7 @@ installs the wrapper, and downloads `ffprobe-full`. Watch it with
 **Combining mods** — separate multiple mods with `|`:
 
 ```yaml
-- DOCKER_MODS=ghcr.io/cosmicflow2512/strmprobe-mod:latest|ghcr.io/thecaptain989/sonarr-striptracks:latest
+- DOCKER_MODS=ghcr.io/cosmicflow2512/strmprobe-mod:latest|linuxserver/mods:universal-package-install
 ```
 
 STRMProbe's init script is numbered `99-` so it runs **last** — after any mod
@@ -105,13 +118,22 @@ that might also touch `/app/*/bin/`. (Mod load order is not otherwise guaranteed
 
 ## Manual installation (non-mod fallback)
 
-For non-LSIO images, custom builds, or if you'd rather not use a mod, mount the
-two scripts into `/config` yourself:
+For non-LSIO images, custom builds, or if you'd rather not use a mod, mount three
+things into the container:
 
-1. `src/strmprobe-init.sh` → `/config/custom-cont-init.d/99-strmprobe`
-2. `src/ffprobe-wrapper.sh` → `/config/strmprobe/ffprobe-wrapper.sh`
-3. *(optional)* a pre-seeded `ffprobe-full` → `/config/bin/ffprobe-full`
-   (otherwise auto-downloaded on first start — needs container network access)
+1. **Init script** — `src/strmprobe-init.sh` named `99-strmprobe`, mounted into
+   the container at **`/custom-cont-init.d`** (container root, **not** inside
+   `/config`). The file must be owned by `root:root` and executable (`chmod 755`);
+   LSIO ignores files in this directory that aren't root-owned and executable.
+2. **Wrapper source** — `src/ffprobe-wrapper.sh` placed at
+   `/config/strmprobe/ffprobe-wrapper.sh` (read by the init script at startup).
+3. **`ffprobe-full` binary** — *(optional)* `/config/bin/ffprobe-full`. Otherwise
+   it's auto-downloaded on first start (needs container network access).
+   Pre-seeding it from the host skips that download — handy if the container has
+   no outbound network:
+   ```bash
+   bash scripts/fetch-ffprobe-full.sh /path/to/sonarr/config/bin/ffprobe-full
+   ```
 
 See [`examples/docker-compose.sonarr.yml`](examples/docker-compose.sonarr.yml)
 and [`examples/unraid-notes.md`](examples/unraid-notes.md) for concrete wiring.
@@ -120,6 +142,12 @@ After mounting/copying, restart the container.
 > **Installation order matters.** Keep the high number (`99-strmprobe`): LSIO runs
 > `custom-cont-init.d` scripts alphabetically, so it ensures STRMProbe runs after
 > other mods that might also modify `/app/*/bin/`.
+
+> **Why not in `/config`?** LSIO explicitly does not support mounting custom
+> scripts inside `/config`: *"we do not support mounting folders for custom
+> scripts and services if they sit within the same folder that you are mounting
+> for /config"* — [LSIO docs](https://docs.linuxserver.io/general/container-customization/).
+> Mount the host directory directly to `/custom-cont-init.d`.
 
 ## Building the mod yourself
 
@@ -146,7 +174,7 @@ without authenticating.
 | `STRMPROBE_LOG_MAX` | `1048576` | log size cap in bytes (truncates in place) |
 | `STRMPROBE_FULL` | `/config/bin/ffprobe-full` | path to the network-capable ffprobe |
 | `STRMPROBE_REAL` | `<bindir>/ffprobe.real` | path to the original ffprobe |
-| `STRMPROBE_WRAPPER_SRC` | `/config/strmprobe/ffprobe-wrapper.sh` | wrapper source the init script installs |
+| `STRMPROBE_WRAPPER_SRC` | *auto-detect* | wrapper source the init script installs; if unset, the init script checks `/config/strmprobe/ffprobe-wrapper.sh` (manual install) and `/usr/local/share/strmprobe/ffprobe-wrapper.sh` (Docker mod) in order |
 
 ## Verifying
 
@@ -168,8 +196,21 @@ up, and that the `VideoFileInfoReader` error is gone from `/config/logs/<app>.tx
 
 ## Updating
 
+**Docker mod** — pull the latest mod image and recreate the container:
+
 ```bash
-# Refresh the wrapper source (git pull or download a new release), then:
+docker pull ghcr.io/cosmicflow2512/strmprobe-mod:latest
+docker compose up -d --force-recreate sonarr
+```
+
+If you pinned a release tag (`:vX.Y.Z`), bump the tag in your compose file
+before recreating. The LSIO base image re-extracts the mod on every start, so
+no further action is needed.
+
+**Manual install** — refresh the wrapper source (git pull or download a new
+release), then:
+
+```bash
 cp src/ffprobe-wrapper.sh /srv/sonarr/strmprobe/ffprobe-wrapper.sh
 docker restart sonarr
 ```
@@ -189,8 +230,10 @@ image's pristine `ffprobe` and STRMProbe is gone.
 # In the container: restore the original binary
 docker exec sonarr mv /app/sonarr/bin/ffprobe.real /app/sonarr/bin/ffprobe
 
-# On the host: remove the init script so it isn't re-installed
-rm /srv/sonarr/custom-cont-init.d/99-strmprobe
+# On the host: remove the init script from wherever you mounted it
+# (the host path you mapped to /custom-cont-init.d in the container).
+# Example for a typical Unraid layout:
+rm /srv/sonarr-init/99-strmprobe
 
 docker restart sonarr
 ```

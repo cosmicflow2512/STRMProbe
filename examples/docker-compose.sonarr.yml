@@ -23,10 +23,12 @@ services:
     restart: unless-stopped
 
     # --- Manual (non-mod) alternative: drop the DOCKER_MODS line above and mount
-    #     the two scripts into /config instead (see README "Manual installation"):
+    #     the scripts yourself (see README "Manual installation"). The init script
+    #     goes at the container root /custom-cont-init.d (NOT under /config) and
+    #     must be root:root + executable, or LSIO ignores it.
     # volumes:
     #   - /srv/sonarr:/config
-    #   - ./src/strmprobe-init.sh:/config/custom-cont-init.d/99-strmprobe:ro
+    #   - ./src/strmprobe-init.sh:/custom-cont-init.d/99-strmprobe:ro
     #   - ./src/ffprobe-wrapper.sh:/config/strmprobe/ffprobe-wrapper.sh:ro
     #   # Optional pre-seeded binary (otherwise auto-downloaded on first start):
     #   # - ./bin/ffprobe-full:/config/bin/ffprobe-full:ro
