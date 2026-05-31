@@ -1,0 +1,5 @@
+# STRMProbe shellcheck configuration
+shell=bash
+
+# Follow `source`/`.` statements (the test cases source tests/lib/harness.sh).
+external-sources=true
