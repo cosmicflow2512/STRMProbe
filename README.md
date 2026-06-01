@@ -175,6 +175,7 @@ without authenticating.
 | `STRMPROBE_FULL` | `/config/bin/ffprobe-full` | path to the network-capable ffprobe |
 | `STRMPROBE_REAL` | `<bindir>/ffprobe.real` | path to the original ffprobe |
 | `STRMPROBE_WRAPPER_SRC` | *auto-detect* | wrapper source the init script installs; if unset, the init script checks `/config/strmprobe/ffprobe-wrapper.sh` (manual install) and `/usr/local/share/strmprobe/ffprobe-wrapper.sh` (Docker mod) in order |
+| `STRMPROBE_CACHE_DIR` | *(unset = off)* | if set, cache successful `.strm` probe results here to skip repeat downloads (see [Result cache](#result-cache-optional)) |
 
 ## Verifying
 
@@ -249,6 +250,30 @@ your remote source (NzbDAV, Xtream, …). Best practices:
 - If your source has rate limits (e.g. NzbDAV download keys, Usenet retention),
   batch the work over time.
 - Schedule intensive operations during off-peak hours.
+- Enable the **result cache** below so repeat probes don't re-download.
+
+## Result cache (optional)
+
+Set `STRMPROBE_CACHE_DIR` to a writable path to cache probe results and skip the
+repeat HTTP downloads described above — handy for large libraries and frequent
+re-scans:
+
+```yaml
+environment:
+  - STRMPROBE_CACHE_DIR=/config/strmprobe-cache
+```
+
+- **What's cached:** only **successful** `.strm` probes. A failed probe (e.g. an
+  expired token) is never cached, so it's retried next time.
+- **Cache key:** a hash of the `.strm` **contents** (the URL) **and** the ffprobe
+  arguments — so a changed URL re-probes automatically, and different probe types
+  (`-show_streams` vs `-show_chapters`, …) never return each other's data.
+- **Invalidation:** automatic when a `.strm`'s URL changes. Old entries are **not**
+  auto-evicted — the cache grows over time. Prune it yourself when needed, e.g. via
+  cron: `find /config/strmprobe-cache -name '*.json' -mtime +30 -delete`, or clear
+  it with `rm -rf /config/strmprobe-cache/*`.
+- **Scope:** only network (`.strm`) probes are cached; normal local files are never
+  touched. With the cache off (default), the wrapper behaves exactly as before.
 
 ## Testing & development
 
@@ -274,9 +299,8 @@ propagation without any real ffprobe and without root.
   apply.
 - **Maintenance.** Static `ffprobe-full` builds don't auto-update; refresh the
   binary if an FFmpeg HTTP-stack vulnerability matters to you.
-- **Deferred features (not in v1.0):** a result cache (`STRMPROBE_CACHE_DIR`),
-  custom auth headers (`STRMPROBE_HEADERS`), and `rtmp`/`rtsp` schemes. The code
-  leaves room for these.
+- **Deferred features:** custom auth headers (`STRMPROBE_HEADERS`) and `rtmp`/`rtsp`
+  schemes are not yet implemented. The code leaves room for these.
 
 ## License & the `ffprobe-full` binary
 
