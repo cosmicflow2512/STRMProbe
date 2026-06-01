@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Test stub standing in for the network-capable static ffprobe ("ffprobe-full").
 # Prints a routing tag plus one line per argument, then exits with STUB_EXIT.
+# Record each invocation (one line) so tests can detect cache hits/misses.
+[ -n "${STUB_COUNT_FILE:-}" ] && echo x >> "$STUB_COUNT_FILE"
 printf 'WHICH=FULL\n'
 for a in "$@"; do
     printf 'ARG=%s\n' "$a"

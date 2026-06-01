@@ -20,7 +20,7 @@ set -u
 # exec/exit so it can propagate the child's exit code; it must never abort on an
 # intermediate non-zero test.
 
-readonly STRMPROBE_VERSION="1.0.0"
+readonly STRMPROBE_VERSION="1.1.0"
 
 # --- Version flag (handled before anything else) ---
 if [ "${1:-}" = "--strmprobe-version" ]; then
@@ -47,6 +47,11 @@ FULL_FFPROBE="${STRMPROBE_FULL:-/config/bin/ffprobe-full}"
 LOG_ENABLED="${STRMPROBE_LOG:-0}"
 LOG_FILE="${STRMPROBE_LOGFILE:-/config/logs/ffprobe-wrapper.log}"
 LOG_MAX_BYTES="${STRMPROBE_LOG_MAX:-1048576}"   # 1 MiB
+
+# Optional result cache for .strm probes (off unless STRMPROBE_CACHE_DIR is set).
+# Keyed on the .strm contents AND the probe arguments; only successful probes are
+# cached. See README "Result cache".
+CACHE_DIR="${STRMPROBE_CACHE_DIR:-}"
 
 # Per-input demuxer options injected immediately before the input when probing a
 # .strm URL. Order matters: these must precede the input (or its -i flag).
@@ -211,6 +216,36 @@ while [ "$j" -lt "$N" ]; do
     fi
     j=$((j + 1))
 done
+
+# --- Result cache (optional): serve repeated probes of the same .strm+args from
+#     disk instead of re-downloading over HTTP. Only successful probes are stored. ---
+if [ -n "$CACHE_DIR" ] && command -v sha256sum >/dev/null 2>&1 && mkdir -p "$CACHE_DIR" 2>/dev/null; then
+    # Key on the .strm contents (the URL) AND the original arguments, so different
+    # probe types (e.g. -show_streams vs -show_chapters) never collide on one key.
+    cache_key="$( { cat "$INPUT"; printf '\0'; printf '%s\0' "${ARGS[@]}"; } | sha256sum | cut -d' ' -f1 )"
+    cache_file="$CACHE_DIR/$cache_key.json"
+
+    if [ -f "$cache_file" ]; then
+        log "route=cache key=$cache_key input=$INPUT"
+        cat "$cache_file"
+        exit 0
+    fi
+
+    tmp_out="$(mktemp "$CACHE_DIR/.tmp.XXXXXX" 2>/dev/null || printf '%s' "$CACHE_DIR/.tmp.$$")"
+    "$FULL_FFPROBE" "${NEW[@]}" > "$tmp_out"
+    rc=$?
+    cat "$tmp_out"                       # always emit the exact probe output
+    if [ "$rc" -eq 0 ]; then
+        # Store atomically (best-effort); never let a cache-write issue affect output.
+        mv -f "$tmp_out" "$cache_file" 2>/dev/null \
+            || { cp -f "$tmp_out" "$cache_file" 2>/dev/null; rm -f "$tmp_out"; }
+        log "route=full cached key=$cache_key input=$INPUT url=$URL"
+    else
+        log "route=full nocache rc=$rc input=$INPUT url=$URL"
+        rm -f "$tmp_out"
+    fi
+    exit "$rc"
+fi
 
 log "route=full input=$INPUT url=$URL argc_new=${#NEW[@]}"
 exec "$FULL_FFPROBE" "${NEW[@]}"
