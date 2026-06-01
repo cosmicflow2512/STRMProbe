@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # STRMProbe init script for LinuxServer.io containers.
 #
-# Place in /config/custom-cont-init.d/ (e.g. as 99-strmprobe). LSIO runs these as
-# root before the app starts, on every boot, so re-patching here is exactly what
-# survives image updates.
+# Place in /custom-cont-init.d/ (container root, e.g. as 99-strmprobe) — this is
+# where the Docker mod installs it, and where manual installs should mount it.
+# LSIO runs these as root before the app starts, on every boot, so re-patching
+# here is exactly what survives image updates.
 #
 # It (1) validates and locates the wrapper source, (2) auto-downloads a
 # network-capable ffprobe ("ffprobe-full") if missing, and (3) replaces every
