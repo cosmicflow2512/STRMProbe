@@ -29,3 +29,22 @@ assert_arg_before "-show_format" "-show_streams"
 # The .strm path is replaced by the URL.
 assert_missing_arg "$TMP/in.strm"
 assert_has_arg "$URL"
+
+# Default network timeout is injected before the URL.
+assert_arg_pair "-rw_timeout" "30000000"
+assert_arg_before "-rw_timeout" "$URL"
+
+# --- Probe-tuning env overrides are honoured ---
+export STRMPROBE_PROBESIZE=1000000 STRMPROBE_ANALYZEDURATION=2000000 STRMPROBE_RW_TIMEOUT=60000000
+run_wrapper -v error -print_format json "$TMP/in.strm"
+assert_arg_pair "-probesize" "1000000"
+assert_arg_pair "-analyzeduration" "2000000"
+assert_arg_pair "-rw_timeout" "60000000"
+unset STRMPROBE_PROBESIZE STRMPROBE_ANALYZEDURATION STRMPROBE_RW_TIMEOUT
+
+# Timeout disabled with 0 -> no -rw_timeout token injected at all.
+export STRMPROBE_RW_TIMEOUT=0
+run_wrapper -v error -print_format json "$TMP/in.strm"
+assert_which FULL
+assert_missing_arg "-rw_timeout"
+unset STRMPROBE_RW_TIMEOUT

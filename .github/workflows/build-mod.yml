@@ -3,10 +3,7 @@ name: Build & push STRMProbe mod
 on:
   push:
     branches: [main]
-    paths:
-      - mod/**
-      - src/**
-      - .github/workflows/build-mod.yml
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 jobs:
@@ -16,7 +13,7 @@ jobs:
       contents: read
       packages: write          # required to push to GHCR
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Stage the wrapper + init script from src/ into mod/root/ (single source
       # of truth). Same script the local mod/build.sh uses.
@@ -36,9 +33,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lowercase owner for image name
-        id: img
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      # Derive tags/labels. On main pushes -> :latest + :sha-…; on a vX.Y.Z tag
+      # push -> :vX.Y.Z + :vX.Y (+ :sha-…). metadata-action lowercases the image.
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/strmprobe-mod
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=sha
 
       - name: Build & push (multi-arch)
         uses: docker/build-push-action@v6
@@ -46,6 +52,5 @@ jobs:
           context: mod
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/${{ steps.img.outputs.owner }}/strmprobe-mod:latest
-            ghcr.io/${{ steps.img.outputs.owner }}/strmprobe-mod:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

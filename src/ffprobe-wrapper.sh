@@ -20,7 +20,7 @@ set -u
 # exec/exit so it can propagate the child's exit code; it must never abort on an
 # intermediate non-zero test.
 
-readonly STRMPROBE_VERSION="1.1.0"
+readonly STRMPROBE_VERSION="1.2.0"
 
 # --- Version flag (handled before anything else) ---
 if [ "${1:-}" = "--strmprobe-version" ]; then
@@ -53,13 +53,21 @@ LOG_MAX_BYTES="${STRMPROBE_LOG_MAX:-1048576}"   # 1 MiB
 # cached. See README "Result cache".
 CACHE_DIR="${STRMPROBE_CACHE_DIR:-}"
 
+# Probe tuning (env-overridable). Lower probesize/analyzeduration to cut per-probe
+# download; rw_timeout (microseconds) makes a dead/slow URL fail fast — 0 disables.
+PROBESIZE="${STRMPROBE_PROBESIZE:-5000000}"
+ANALYZEDURATION="${STRMPROBE_ANALYZEDURATION:-5000000}"
+RW_TIMEOUT="${STRMPROBE_RW_TIMEOUT:-30000000}"
+
 # Per-input demuxer options injected immediately before the input when probing a
 # .strm URL. Order matters: these must precede the input (or its -i flag).
 INJECT_OPTS=(
     -protocol_whitelist "file,http,https,tcp,tls"
-    -analyzeduration 5000000
-    -probesize 5000000
+    -analyzeduration "$ANALYZEDURATION"
+    -probesize "$PROBESIZE"
 )
+# Network read/write timeout (skipped when disabled with 0).
+[ "$RW_TIMEOUT" != "0" ] && INJECT_OPTS+=( -rw_timeout "$RW_TIMEOUT" )
 
 # --- Logging (gated on STRMPROBE_LOG=1; size-capped, no logrotate dependency) ---
 log() {
@@ -220,9 +228,13 @@ done
 # --- Result cache (optional): serve repeated probes of the same .strm+args from
 #     disk instead of re-downloading over HTTP. Only successful probes are stored. ---
 if [ -n "$CACHE_DIR" ] && command -v sha256sum >/dev/null 2>&1 && mkdir -p "$CACHE_DIR" 2>/dev/null; then
-    # Key on the .strm contents (the URL) AND the original arguments, so different
-    # probe types (e.g. -show_streams vs -show_chapters) never collide on one key.
-    cache_key="$( { cat "$INPUT"; printf '\0'; printf '%s\0' "${ARGS[@]}"; } | sha256sum | cut -d' ' -f1 )"
+    # Key on the .strm contents (the URL), the original arguments, AND the effective
+    # probe-tuning params. Different probe types (e.g. -show_streams vs -show_chapters)
+    # never collide; and changing the tuning invalidates existing entries by design —
+    # fresh probe params must produce fresh results.
+    cache_key="$( { cat "$INPUT"; printf '\0'; printf '%s\0' "${ARGS[@]}"; \
+                   printf '\0%s' "$PROBESIZE|$ANALYZEDURATION|$RW_TIMEOUT"; \
+                 } | sha256sum | cut -d' ' -f1 )"
     cache_file="$CACHE_DIR/$cache_key.json"
 
     if [ -f "$cache_file" ]; then

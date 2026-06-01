@@ -159,11 +159,21 @@ bash mod/build.sh                 # stages src/ -> mod/root/ and builds strmprob
 
 `src/` stays the single source of truth — `mod/stage.sh` copies the wrapper and
 init script into `mod/root/` (git-ignored) at build time. CI builds and pushes
-**multi-arch (amd64 + arm64)** images to GHCR on every push to `main` touching
-`src/` or `mod/`, via
+**multi-arch (amd64 + arm64)** images to GHCR on every push to `main` and on
+version tags, via
 [`.github/workflows/build-mod.yml`](.github/workflows/build-mod.yml). After the
 first push, set the GHCR package visibility to **public** so users can pull it
 without authenticating.
+
+**Cutting a release.** Push a semver tag and the workflow publishes the matching
+images:
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+→ `ghcr.io/cosmicflow2512/strmprobe-mod:vX.Y.Z`, `:vX.Y`, and `:latest`. Pin a
+specific `:vX.Y.Z` in production so mod updates don't roll out unexpectedly.
 
 ## Configuration (environment variables)
 
@@ -176,6 +186,9 @@ without authenticating.
 | `STRMPROBE_REAL` | `<bindir>/ffprobe.real` | path to the original ffprobe |
 | `STRMPROBE_WRAPPER_SRC` | *auto-detect* | wrapper source the init script installs; if unset, the init script checks `/config/strmprobe/ffprobe-wrapper.sh` (manual install) and `/usr/local/share/strmprobe/ffprobe-wrapper.sh` (Docker mod) in order |
 | `STRMPROBE_CACHE_DIR` | *(unset = off)* | if set, cache successful `.strm` probe results here to skip repeat downloads (see [Result cache](#result-cache-optional)) |
+| `STRMPROBE_RW_TIMEOUT` | `30000000` | network read/write timeout in µs (FFmpeg `-rw_timeout`); `0` disables. Raise to `60000000` (60s) for slow tunnels / high-latency remotes; lower to `10000000` (10s) on a fast LAN. Fail-fast against dead URLs so a hung probe can't block an import |
+| `STRMPROBE_PROBESIZE` | `5000000` | FFmpeg `-probesize` in bytes. Lower (`1000000` = 1 MB) cuts per-probe download for small files; raise (`20000000`) for UHD files with large trailing indexes if probes return `Invalid data found` |
+| `STRMPROBE_ANALYZEDURATION` | `5000000` | FFmpeg `-analyzeduration` in µs; same trade-off as probesize — usually keep the two equal |
 
 ## Verifying
 
@@ -252,6 +265,11 @@ your remote source (NzbDAV, Xtream, …). Best practices:
 - Schedule intensive operations during off-peak hours.
 - Enable the **result cache** below so repeat probes don't re-download.
 
+**Faster probing on fast networks.** On a LAN-local NzbDAV, set
+`STRMPROBE_PROBESIZE=1000000` and `STRMPROBE_ANALYZEDURATION=1000000` — 1 MB per probe
+is usually enough to read codec/duration/audio metadata and cuts per-probe download by
+~80%.
+
 ## Result cache (optional)
 
 Set `STRMPROBE_CACHE_DIR` to a writable path to cache probe results and skip the
@@ -265,13 +283,19 @@ environment:
 
 - **What's cached:** only **successful** `.strm` probes. A failed probe (e.g. an
   expired token) is never cached, so it's retried next time.
-- **Cache key:** a hash of the `.strm` **contents** (the URL) **and** the ffprobe
-  arguments — so a changed URL re-probes automatically, and different probe types
-  (`-show_streams` vs `-show_chapters`, …) never return each other's data.
+- **Cache key:** a hash of the `.strm` **contents** (the URL), the ffprobe arguments,
+  **and** the probe-tuning params (`STRMPROBE_PROBESIZE`/`_ANALYZEDURATION`/`_RW_TIMEOUT`)
+  — so a changed URL re-probes automatically, different probe types (`-show_streams` vs
+  `-show_chapters`, …) never return each other's data, and changing the tuning produces
+  fresh results.
 - **Invalidation:** automatic when a `.strm`'s URL changes. Old entries are **not**
   auto-evicted — the cache grows over time. Prune it yourself when needed, e.g. via
   cron: `find /config/strmprobe-cache -name '*.json' -mtime +30 -delete`, or clear
   it with `rm -rf /config/strmprobe-cache/*`.
+- **Upgrading / re-tuning:** the cache-key format can change between versions (v1.2.0
+  added the tuning params), and changing a tuning value changes the key. This is **by
+  design** — stale entries are simply ignored and the next library scan re-probes once.
+  Clear old files any time with `rm -f "$STRMPROBE_CACHE_DIR"/*.json`.
 - **Scope:** only network (`.strm`) probes are cached; normal local files are never
   touched. With the cache off (default), the wrapper behaves exactly as before.
 
