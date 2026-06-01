@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: shellcheck
+        run: shellcheck -x src/*.sh scripts/*.sh tests/run.sh tests/lib/*.sh tests/cases/*.sh tests/stubs/*.stub
+      - name: test suite
+        run: bash tests/run.sh
